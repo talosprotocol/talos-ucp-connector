@@ -1,0 +1,25 @@
+[project]
+name = "talos-ucp-connector"
+version = "0.1.0"
+description = "Universal Commerce Protocol (UCP) Connector for Talos"
+authors = [
+    {name = "Talos Protocol", email = "dev@talos.network"},
+]
+dependencies = [
+    "mcp[cli]>=0.1.0",
+    "httpx>=0.24.0",
+    "pydantic>=2.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "cachetools>=5.3.0",
+]
+requires-python = ">=3.10"
+
+[project.scripts]
+talos-ucp = "talos_ucp_connector.adapters.inbound.mcp_server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+mypy_path = "stubs"
