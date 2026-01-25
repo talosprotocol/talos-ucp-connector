@@ -1,47 +1,48 @@
 import httpx
 import uuid
-from typing import Dict, Any, List
-from ...ports.spi import DiscoveryPort, CheckoutPort
-from ..infrastructure.network import OutboundNetworkGuard
+import ssl
+from typing import Dict, Any, List, Optional
+from ...ports.spi import DiscoveryPort, MerchantCheckoutPort, RequestSignerPort
 
 class HttpDiscoveryAdapter(DiscoveryPort):
-    def __init__(self, client: httpx.Client = None):
-        self.client = client or httpx.Client(timeout=10.0)
+    def __init__(self, client: Optional[httpx.Client] = None):
+        # Enforce TLS 1.3
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        self.client = client or httpx.Client(timeout=10.0, verify=context)
 
     def fetch_profile(self, merchant_domain: str) -> Dict[str, Any]:
         url = f"https://{merchant_domain}/.well-known/ucp"
-        OutboundNetworkGuard.validate_url(url)
         resp = self.client.get(url)
         resp.raise_for_status()
         return resp.json()
 
-class HttpCheckoutAdapter(CheckoutPort):
-    def __init__(self, client: httpx.Client = None):
-        self.client = client or httpx.Client(timeout=30.0)
+class HttpMerchantCheckoutAdapter(MerchantCheckoutPort):
+    def __init__(self, client: Optional[httpx.Client] = None):
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        self.client = client or httpx.Client(timeout=30.0, verify=context)
 
-    def _get_base_url(self, merchant_domain: str) -> str:
-        return f"https://{merchant_domain}/api/shopping/v1"
-
-    def create_session(self, merchant_domain: str, line_items: list, currency: str, headers: Dict[str, str]) -> Dict[str, Any]:
-        endpoint = self._get_base_url(merchant_domain) + "/checkout-sessions"
-        OutboundNetworkGuard.validate_url(endpoint)
-        
-        payload = {"line_items": line_items, "currency": currency, "mode": "payment"}
+    def _prepare_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
         req_headers = headers.copy()
-        req_headers["Idempotency-Key"] = str(uuid.uuid4())
-        
-        resp = self.client.post(endpoint, json=payload, headers=req_headers)
+        req_headers["Request-Id"] = str(uuid.uuid4())
+        # UCP-Agent is usually added by the service/domain layer calling this
+        return req_headers
+
+    def post_checkout(self, url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        req_headers = self._prepare_headers(headers)
+        resp = self.client.post(url, json=payload, headers=req_headers)
         resp.raise_for_status()
         return resp.json()
 
-    def complete_session(self, merchant_domain: str, session_id: str, payment_data: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
-        endpoint = self._get_base_url(merchant_domain) + f"/checkout-sessions/{session_id}/complete"
-        OutboundNetworkGuard.validate_url(endpoint)
-        
-        payload = {"payment_data": payment_data}
-        req_headers = headers.copy()
-        req_headers["Idempotency-Key"] = str(uuid.uuid4())
-        
-        resp = self.client.post(endpoint, json=payload, headers=req_headers)
+    def put_checkout(self, url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        req_headers = self._prepare_headers(headers)
+        resp = self.client.put(url, json=payload, headers=req_headers)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_checkout(self, url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+        req_headers = self._prepare_headers(headers)
+        resp = self.client.get(url, headers=req_headers)
         resp.raise_for_status()
         return resp.json()

@@ -1,54 +1,75 @@
-from mcp.server.fastmcp import FastMCP # type: ignore
-from ...bootstrap.container import Container
-from ...domain.models import LineItem
+from mcp.server.fastmcp import FastMCP
+from .bootstrap.container import Container
 
-# Initialize FastMCP (Infrastructure)
+# Initialize MCP Server
 mcp = FastMCP("talos-ucp-connector")
 
-# Initialize Container (Composition Root)
-# In production, load config from env/yaml
+# Configuration (In production, load from env/consul/k8s)
 CONFIG = {
-    "policy": {
-        "allowed_merchants": ["demo.ucp.dev", "shop.example.com"],
-        "allowed_currencies": ["USD"],
-        "max_spend_minor": 10000
+    "merchants": {
+        "merchant.example.com": {
+            "policy": {"max_spend": 5000}
+        }
     },
-    "platform_profile_uri": "https://talos.network/.well-known/ucp"
+    "platform_profile_uri": "talos-gateway-v1",
+    "security": {
+        "kid": "talos-dev-key-1"
+    }
 }
-container = Container(CONFIG)
-service = container.commerce_service
 
-@mcp.tool()
-async def ucp_discover(merchant_domain: str):
-    """
-    Discovers UCP capabilities.
-    """
-    try:
-        return service.discover_and_negotiate(merchant_domain)
-    except Exception as e:
-        return {"error": str(e), "merchant": merchant_domain}
+# Bootstrapping
+container = Container(CONFIG)
+service = container.service
 
 @mcp.tool()
 async def ucp_checkout_create(merchant_domain: str, line_items: list, currency: str):
     """
-    Creates a new checkout session.
+    Creates a new UCP checkout session.
     """
-    # Note: line_items passed as list, conversion to domain models inside adapter or service
-    # here we assume list of dicts.
     try:
         return service.create_checkout(merchant_domain, line_items, currency)
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "code": "UCP_CREATE_FAILED"}
+
+@mcp.tool()
+async def ucp_checkout_get(merchant_domain: str, session_id: str):
+    """
+    Retrieves an existing UCP checkout session.
+    """
+    try:
+        return service.get_checkout(merchant_domain, session_id)
+    except Exception as e:
+        return {"error": str(e), "code": "UCP_GET_FAILED"}
+
+@mcp.tool()
+async def ucp_checkout_update(merchant_domain: str, session_id: str, checkout_payload: dict):
+    """
+    Updates an existing UCP checkout session (PUT semantic).
+    """
+    try:
+        return service.update_checkout(merchant_domain, session_id, checkout_payload)
+    except Exception as e:
+        return {"error": str(e), "code": "UCP_UPDATE_FAILED"}
 
 @mcp.tool()
 async def ucp_checkout_complete(merchant_domain: str, session_id: str, amount_minor: int, currency: str):
     """
-    Completes a checkout session.
+    Completes a UCP checkout session by providing platform credentials.
     """
     try:
         return service.complete_checkout(merchant_domain, session_id, amount_minor, currency)
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "code": "UCP_COMPLETE_FAILED"}
+
+@mcp.tool()
+async def ucp_checkout_cancel(merchant_domain: str, session_id: str):
+    """
+    Cancels an active UCP checkout session.
+    """
+    try:
+        return service.cancel_checkout(merchant_domain, session_id)
+    except Exception as e:
+        return {"error": str(e), "code": "UCP_CANCEL_FAILED"}
 
 def main():
     mcp.run()
