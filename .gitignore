@@ -10,3 +10,6 @@ venv/
 *.log
 *.db*
 .!*
+tga.db*
+__pycache__/
+.venv/
