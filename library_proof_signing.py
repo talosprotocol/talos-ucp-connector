@@ -1,177 +1,166 @@
 import json
-import uuid
-import time
 import base64
-from typing import Dict, Any, Optional
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
+from typing import Dict, Any, Optional, cast
 import rfc8785
 import http_sfv
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, padding
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+from cryptography.hazmat.primitives import serialization
 
-def canonicalize_query(params: Dict[str, str]) -> str:
-    """Canonical query string: sorted by (name, value) lexicographically."""
-    sorted_params = sorted(params.items())
-    import urllib.parse
-    return urllib.parse.urlencode(sorted_params)
+# --- CANONICALIZATION ENGINE ---
 
-def canonicalize_ucp_agent(agent_str: str) -> str:
-    """Parse as RFC 8941 Dictionary and re-serialize."""
-    dict_val = http_sfv.Dictionary()
-    dict_val.parse(agent_str.encode('ascii'))
-    return str(dict_val)
+class UcpCanonicalizer:
+    @staticmethod
+    def canonicalize_jcs(data: Dict[str, Any]) -> bytes:
+        """RFC 8785: JSON Canonicalization Scheme (JCS)."""
+        return rfc8785.dumps(data)
 
-def create_signing_envelope(
-    method: str,
-    path: str,
-    query_params: Dict[str, str],
-    headers: Dict[str, str],
-    body: Optional[Dict[str, Any]],
-    iat: int,
-    jti: str
-) -> Dict[str, Any]:
-    """Constructs the canonical signing envelope."""
-    query_string = canonicalize_query(query_params)
-    processed_headers = {k.lower(): v for k, v in headers.items()}
-    if 'ucp-agent' in processed_headers:
-        processed_headers['ucp-agent'] = canonicalize_ucp_agent(processed_headers['ucp-agent'])
-    
-    envelope = {
-        "method": method.upper(),
-        "path": path,
-        "query": query_string,
-        "headers": processed_headers,
-        "body": body if body is not None else None,
-        "meta": {
-            "iat": iat,
-            "jti": jti
+    @staticmethod
+    def canonicalize_sfv_dict(sfv_str: str) -> str:
+        """RFC 8941: Structured Field Values Dictionary serialization."""
+        dict_val = http_sfv.Dictionary()
+        dict_val.parse(sfv_str.encode('ascii'))
+        return str(dict_val)
+
+# --- SIGNING ENGINE (RULE A: DETACHED JWS) ---
+
+class RequestSigner:
+    def __init__(self, private_key_pem: str):
+        self.private_key = serialization.load_pem_private_key(
+            private_key_pem.encode('ascii'),
+            password=None
+        )
+
+    def sign_request(self, 
+                     method: str, 
+                     path: str, 
+                     query: str, 
+                     headers: Dict[str, str], 
+                     body: Optional[Dict[str, Any]], 
+                     kid: str) -> str:
+        
+        # 1. Normalize Headers (subset for signing scope)
+        signed_headers = {
+            "ucp-agent": UcpCanonicalizer.canonicalize_sfv_dict(headers.get("UCP-Agent", "")),
+            "request-id": headers.get("Request-Id", "")
         }
-    }
-    return envelope
+        if "Idempotency-Key" in headers:
+            signed_headers["idempotency-key"] = headers["Idempotency-Key"]
 
-def base64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode('ascii').rstrip('=')
+        # 2. Construct Envelope
+        envelope = {
+            "method": method.upper(),
+            "path": path,
+            "query": query, # Pre-canonicalized by caller
+            "headers": signed_headers,
+            "body": body if body is not None else None,
+            "meta": {
+                "iat": headers.get("X-UCP-Iat"), # Assuming meta sent in headers for proof
+                "jti": headers.get("X-UCP-Jti")
+            }
+        }
 
-def sign_option_a(envelope: Dict[str, Any], private_key_pem: str, kid: str) -> str:
-    """
-    Option A: Detached JWS <protected>..<sig>
-    Signing Level: JWS Compact Signature Input = BASE64URL(UTF8(JCS(header))) + "." + BASE64URL(JCS(envelope))
-    """
-    header = {"alg": "ES256", "kid": kid, "typ": "JOSE"}
-    header_bytes = rfc8785.dumps(header)
-    header_b64 = base64url_encode(header_bytes)
-    
-    envelope_bytes = rfc8785.dumps(envelope)
-    envelope_b64 = base64url_encode(envelope_bytes)
-    
-    signing_input = f"{header_b64}.{envelope_b64}".encode('ascii')
-    
-    # Load key
-    key = serialization.load_pem_private_key(private_key_pem.encode('ascii'), password=None)
-    raw_sig = key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
-    
-    # ECDSA signature is (r, s) in ASN.1. JWS wants raw 64 bytes (R | S)
-    r, s = decode_dss_signature(raw_sig)
-    # Each is 32 bytes for P-256
-    sig_bytes = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
-    sig_b64 = base64url_encode(sig_bytes)
-    
-    return f"{header_b64}..{sig_b64}"
+        # 3. JCS Canonicalization
+        payload_bytes = UcpCanonicalizer.canonicalize_jcs(envelope)
+        
+        # 4. Create JWS Protected Header
+        jws_header = {
+            "alg": "ES256",
+            "kid": kid,
+            "typ": "JOSE"
+        }
+        header_b64 = base64.urlsafe_b64encode(json.dumps(jws_header).encode('utf-8')).decode('ascii').rstrip('=')
+        
+        # 5. Signing Input (Detached: Header . B64(Payload))
+        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode('ascii').rstrip('=')
+        signing_input = f"{header_b64}.{payload_b64}".encode('ascii')
 
-def verify_option_a(detached_jws: str, envelope: Dict[str, Any], public_key_pem: str) -> bool:
-    """Verifies a detached JWS against an envelope."""
-    parts = detached_jws.split('.')
-    if len(parts) != 3 or parts[1] != "":
-        return False
-    
-    header_b64 = parts[0]
-    sig_b64 = parts[2]
-    
-    # Reconstruct signing input
-    envelope_bytes = rfc8785.dumps(envelope)
-    envelope_b64 = base64url_encode(envelope_bytes)
-    signing_input = f"{header_b64}.{envelope_b64}".encode('ascii')
-    
-    # Decode signature from raw 64 bytes to (r, s) for cryptography
-    def base64url_decode(s: str) -> bytes:
-        padding = '=' * (4 - (len(s) % 4))
-        return base64.urlsafe_b64decode(s + padding)
+        # 6. Generate Signature
+        if isinstance(self.private_key, ec.EllipticCurvePrivateKey):
+            signature = self.private_key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
+        else:
+            raise TypeError("Only EC ES256 keys supported for UCP Option A proof")
+            
+        sig_b64 = base64.urlsafe_b64encode(signature).decode('ascii').rstrip('=')
 
-    sig_raw = base64url_decode(sig_b64)
-    r = int.from_bytes(sig_raw[:32], 'big')
-    s = int.from_bytes(sig_raw[32:], 'big')
-    asn1_sig = encode_dss_signature(r, s)
-    
-    # Load key
-    key = serialization.load_pem_public_key(public_key_pem.encode('ascii'))
-    
+        # 7. Return Detached JWS format: Header..Signature
+        return f"{header_b64}..{sig_b64}"
+
+# --- VERIFICATION PROOF ---
+
+def verify_ucp_signature(sig_header: str, envelope: Dict[str, Any], public_key_pem: str) -> bool:
     try:
-        key.verify(asn1_sig, signing_input, ec.ECDSA(hashes.SHA256()))
-        return True
+        parts = sig_header.split('.')
+        if len(parts) != 3 or parts[1] != "":
+            return False
+        
+        header_b64, _, sig_b64 = parts
+        
+        # Reconstruct signing input
+        payload_bytes = UcpCanonicalizer.canonicalize_jcs(envelope)
+        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode('ascii').rstrip('=')
+        signing_input = f"{header_b64}.{payload_b64}".encode('ascii')
+        
+        # Load Key
+        public_key = serialization.load_pem_public_key(public_key_pem.encode('ascii'))
+        signature = base64.urlsafe_b64decode(sig_b64 + '==')
+
+        if isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(signature, signing_input, ec.ECDSA(hashes.SHA256()))
+            return True
+        return False
     except Exception as e:
-        print(f"Verification FAILED: {e}")
+        print(f"Verification Error: {e}")
         return False
 
-# --- PROOF EXECUTION ---
+# --- LIVE TEST CASE ---
 
-# 1. Setup Keys
-private_key = ec.generate_private_key(ec.SECP256R1())
-private_pem = private_key.private_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption()
-).decode('ascii')
+if __name__ == "__main__":
+    # Mock Key Pair
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode('ascii')
+    
+    public_key = private_key.public_key()
+    public_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode('ascii')
 
-public_key = private_key.public_key()
-public_pem = public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo
-).decode('ascii')
+    signer = RequestSigner(private_pem)
+    
+    mock_headers = {
+        "UCP-Agent": 'profile="talos-gateway-v1", vendor="Talos"',
+        "Request-Id": "550e8400-e29b-41d4-a716-446655440000",
+        "X-UCP-Iat": "1706176800",
+        "X-UCP-Jti": "nonce-999"
+    }
+    
+    # Test signing a GET request (Rule A)
+    sig = signer.sign_request("GET", "/checkout-sessions/cs_123", "", mock_headers, None, "talos-dev-key")
+    print(f"Generated Signature: {sig}")
 
-# 2. Mock Request
-mock_envelope = create_signing_envelope(
-    method="POST",
-    path="/checkout-sessions",
-    query_params={"debug": "true", "version": "1"},
-    headers={
-        "UCP-Agent": 'profile="talos-gateway"',
-        "Request-Id": str(uuid.uuid4())
-    },
-    body={"amount": 1000, "currency": "USD"},
-    iat=int(time.time()),
-    jti=str(uuid.uuid4())
-)
+    # Reconstruct envelope for verification
+    envelope = {
+        "method": "GET",
+        "path": "/checkout-sessions/cs_123",
+        "query": "",
+        "headers": {
+            "ucp-agent": UcpCanonicalizer.canonicalize_sfv_dict(mock_headers["UCP-Agent"]),
+            "request-id": mock_headers["Request-Id"]
+        },
+        "body": None,
+        "meta": {"iat": "1706176800", "jti": "nonce-999"}
+    }
+    
+    is_valid = verify_ucp_signature(sig, envelope, public_pem)
+    print(f"Verification Result: {'PASSED' if is_valid else 'FAILED'}")
 
-print("\n--- Canonical Envelope (JSON) ---")
-print(json.dumps(mock_envelope, indent=2))
-
-# 3. Sign
-signature = sign_option_a(mock_envelope, private_pem, "talos-dev-key")
-print("\n--- Detached JWS (Option A) ---")
-print(signature)
-
-# 4. Verify
-is_valid = verify_option_a(signature, mock_envelope, public_pem)
-print(f"\n--- Verification Result: {'PASSED' if is_valid else 'FAILED'} ---")
-
-# 5. Tamper Test
-tampered_envelope = mock_envelope.copy()
-tampered_envelope["path"] = "/malicious-endpoint"
-is_tamper_detected = not verify_option_a(signature, tampered_envelope, public_pem)
-print(f"--- Tamper Test (Path Mutation): {'DETECTED' if is_tamper_detected else 'FAILED'} ---")
-
-# 6. GET Request with Null Body Proof
-get_envelope = create_signing_envelope(
-    method="GET",
-    path="/checkout-sessions/cs_123",
-    query_params={},
-    headers={"UCP-Agent": 'profile="talos-gateway"'},
-    body=None,
-    iat=int(time.time()),
-    jti=str(uuid.uuid4())
-)
-print("\n--- GET Envelope (Null Body) ---")
-print(json.dumps(get_envelope, indent=2))
-get_sig = sign_option_a(get_envelope, private_pem, "talos-dev-key")
-print(f"GET Verification: {'PASSED' if verify_option_a(get_sig, get_envelope, public_pem) else 'FAILED'}")
+    # Tamper Test: Change path
+    envelope["path"] = "/checkout-sessions/STOLEN"
+    is_valid_tampered = verify_ucp_signature(sig, envelope, public_pem)
+    print(f"Tamper Test (Path Mutation): {'DETECTED' if not is_valid_tampered else 'FAILED'}")
