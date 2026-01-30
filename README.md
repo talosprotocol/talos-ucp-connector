@@ -36,3 +36,7 @@ Configure `allowed_merchants` and `max_spend` in `container.py` (or inject via c
 
 ## References
 1. [Talos Wiki](https://github.com/talosprotocol/talos/wiki)
+
+## License
+
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
