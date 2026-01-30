@@ -35,6 +35,7 @@ Set the following environment variables (or rely on defaults for dev):
 Configure `allowed_merchants` and `max_spend` in `container.py` (or inject via config loader).
 
 ## References
+
 1. [Talos Wiki](https://github.com/talosprotocol/talos/wiki)
 
 ## License
