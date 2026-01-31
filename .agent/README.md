@@ -1,4 +1,5 @@
 # Agent workspace: services/ucp-connector
+> **Project**: services/ucp-connector
 
 This folder contains agent-facing context, tasks, workflows, and planning artifacts for this submodule.
 
