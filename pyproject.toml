@@ -9,7 +9,6 @@ dependencies = [
     "mcp[cli]>=0.1.0",
     "httpx>=0.24.0",
     "pydantic>=2.0.0",
-    "python-jose[cryptography]>=3.3.0",
     "cachetools>=5.3.0",
 ]
 requires-python = ">=3.10"
