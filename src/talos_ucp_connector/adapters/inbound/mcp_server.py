@@ -1,5 +1,6 @@
 from mcp.server.fastmcp import FastMCP
-from .bootstrap.container import Container
+import os
+from talos_ucp_connector.bootstrap.container import Container
 
 # Initialize MCP Server
 mcp = FastMCP("talos-ucp-connector")
@@ -72,4 +73,14 @@ async def ucp_checkout_cancel(merchant_domain: str, session_id: str):
         return {"error": str(e), "code": "UCP_CANCEL_FAILED"}
 
 def main():
-    mcp.run()
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "sse":
+        port = int(os.getenv("PORT", "8084"))
+        mcp.settings.port = port
+        mcp.settings.host = "0.0.0.0"
+        mcp.run(transport="sse")
+    else:
+        mcp.run()
+
+if __name__ == "__main__":
+    main()

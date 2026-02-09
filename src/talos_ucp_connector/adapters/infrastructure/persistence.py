@@ -1,6 +1,6 @@
 import json
 from typing import Dict, Any
-from ...ports.spi import ConfigStorePort, AuditPort
+from talos_ucp_connector.ports.spi import ConfigStorePort, AuditPort
 
 class ConfigStoreAdapter(ConfigStorePort):
     def __init__(self, config: Dict[str, Any]):

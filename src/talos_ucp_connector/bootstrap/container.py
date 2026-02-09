@@ -1,10 +1,10 @@
 from typing import Dict, Any
-from ..adapters.outbound.http import HttpDiscoveryAdapter, HttpMerchantCheckoutAdapter
-from ..adapters.outbound.payment import SandboxPaymentAdapter
-from ..adapters.infrastructure.security import RequestSigner
-from ..adapters.infrastructure.state import SystemClock, InMemoryReplayStore
-from ..adapters.infrastructure.persistence import ConfigStoreAdapter, AuditAdapter
-from ..domain.services import CommerceService
+from talos_ucp_connector.adapters.outbound.http import HttpDiscoveryAdapter, HttpMerchantCheckoutAdapter
+from talos_ucp_connector.adapters.outbound.payment import SandboxPaymentAdapter
+from talos_ucp_connector.adapters.infrastructure.security import RequestSigner
+from talos_ucp_connector.adapters.infrastructure.state import SystemClock, InMemoryReplayStore
+from talos_ucp_connector.adapters.infrastructure.persistence import ConfigStoreAdapter, AuditAdapter
+from talos_ucp_connector.domain.services import CommerceService
 
 class Container:
     """
@@ -23,7 +23,7 @@ class Container:
         # 2. Security
         # Placeholder ES256 Private Key for Dev
         # In production, this would be loaded from a HSM or Secret Manager
-        DEV_KEY = config.get("security", {}).get("private_key", "[REDACTED_BY_POLICY]")
+        DEV_KEY = config.get("security", {}).get("private_key", """[REDACTED_BY_POLICY]""")
         self.signer = RequestSigner(DEV_KEY)
         self.signing_kid = config.get("security", {}).get("kid", "talos-dev-key")
 

@@ -1,6 +1,6 @@
 import uuid
 from typing import Dict, Any, Optional, List
-from ..ports.spi import (
+from talos_ucp_connector.ports.spi import (
     CheckoutLifecycleInboundPort, 
     ConfigurationInboundPort,
     MerchantCheckoutPort,
@@ -12,7 +12,7 @@ from ..ports.spi import (
     AuditPort,
     PaymentPort
 )
-from .helpers import SigningHelper
+from talos_ucp_connector.domain.helpers import SigningHelper
 
 class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
     """
@@ -70,7 +70,6 @@ class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
         base_url = self._get_base_url(merchant_domain)
         full_url = f"{base_url}{path}"
         if query_params:
-            from .helpers import SigningHelper
             full_url += f"?{SigningHelper.canonicalize_query(query_params)}"
 
         # 1. Prepare global headers

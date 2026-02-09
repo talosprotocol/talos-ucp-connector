@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from ...ports.spi import PaymentPort
+from talos_ucp_connector.ports.spi import PaymentPort
 
 class SandboxPaymentAdapter(PaymentPort):
     def get_credentials(self, currency: str, amount_minor: int, merchant_domain: str) -> Dict[str, Any]:

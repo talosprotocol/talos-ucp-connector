@@ -2,7 +2,7 @@ import httpx
 import uuid
 import ssl
 from typing import Dict, Any, List, Optional
-from ...ports.spi import DiscoveryPort, MerchantCheckoutPort, RequestSignerPort
+from talos_ucp_connector.ports.spi import DiscoveryPort, MerchantCheckoutPort, RequestSignerPort
 
 class HttpDiscoveryAdapter(DiscoveryPort):
     def __init__(self, client: Optional[httpx.Client] = None):

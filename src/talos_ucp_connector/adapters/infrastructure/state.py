@@ -1,6 +1,6 @@
 import time
 from typing import Dict, Set
-from ...ports.spi import ClockPort, ReplayStorePort
+from talos_ucp_connector.ports.spi import ClockPort, ReplayStorePort
 
 class SystemClock(ClockPort):
     def now(self) -> int:
