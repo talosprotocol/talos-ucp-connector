@@ -149,17 +149,27 @@ talos-ucp
 
 ## Development
 
+To run the tests, ensure you have a standard Python environment with `pip` available.
+
 ```bash
+# Create venv
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install dependencies
 pip install -e ".[dev]"
 
 # Run tests
 pytest tests/
+```
 
-# Type checking
+### Type Checking
+```bash
 mypy src/
+```
 
-# Verify signing implementation
+### Verify Signing
+```bash
 python library_proof_signing.py
 ```
 

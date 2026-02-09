@@ -1,0 +1,9 @@
+*.db
+*.db-shm
+*.db-wal
+__pycache__
+.venv
+.git
+.coverage
+htmlcov
+.pytest_cache

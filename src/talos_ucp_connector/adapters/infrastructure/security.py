@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 import rfc8785
-from ...ports.spi import RequestSignerPort
+from talos_ucp_connector.ports.spi import RequestSignerPort
 
 class RequestSigner(RequestSignerPort):
     """
