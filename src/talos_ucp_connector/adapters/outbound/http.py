@@ -46,3 +46,17 @@ class HttpMerchantCheckoutAdapter(MerchantCheckoutPort):
         resp = self.client.get(url, headers=req_headers)
         resp.raise_for_status()
         return resp.json()
+
+    def get_order(self, url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+        req_headers = self._prepare_headers(headers)
+        resp = self.client.get(url, headers=req_headers)
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_orders(self, url: str, headers: Dict[str, str]) -> List[Dict[str, Any]]:
+        req_headers = self._prepare_headers(headers)
+        resp = self.client.get(url, headers=req_headers)
+        resp.raise_for_status()
+        # SPEC: UCP List endpoints return a dictionary with "items" key or a direct list
+        data = resp.json()
+        return data.get("items", []) if isinstance(data, dict) else data

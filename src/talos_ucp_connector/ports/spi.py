@@ -24,6 +24,25 @@ class CheckoutLifecycleInboundPort(ABC):
     def cancel_checkout(self, merchant_domain: str, session_id: str) -> Dict[str, Any]:
         pass
 
+class OrderManagementInboundPort(ABC):
+    @abstractmethod
+    def get_order(self, merchant_domain: str, order_id: str) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def list_orders(self, merchant_domain: str, limit: int = 100) -> List[Dict[str, Any]]:
+        pass
+
+class IdentityInboundPort(ABC):
+    @abstractmethod
+    def link_identity(self, merchant_domain: str, principal_id: str, ucp_buyer_id: str) -> Dict[str, Any]:
+        pass
+
+class DiscoveryInboundPort(ABC):
+    @abstractmethod
+    def discover_merchant(self, merchant_did: str) -> Dict[str, Any]:
+        pass
+
 class ConfigurationInboundPort(ABC):
     @abstractmethod
     def get_merchant_config(self, merchant_domain: str) -> Dict[str, Any]:
@@ -46,6 +65,14 @@ class MerchantCheckoutPort(ABC):
 
     @abstractmethod
     def get_checkout(self, url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def get_order(self, url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def list_orders(self, url: str, headers: Dict[str, str]) -> List[Dict[str, Any]]:
         pass
 
 class DiscoveryPort(ABC):
