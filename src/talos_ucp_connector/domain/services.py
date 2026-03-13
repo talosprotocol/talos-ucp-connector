@@ -2,6 +2,9 @@ import uuid
 from typing import Dict, Any, Optional, List
 from talos_ucp_connector.ports.spi import (
     CheckoutLifecycleInboundPort, 
+    OrderManagementInboundPort,
+    IdentityInboundPort,
+    DiscoveryInboundPort,
     ConfigurationInboundPort,
     MerchantCheckoutPort,
     DiscoveryPort,
@@ -14,7 +17,7 @@ from talos_ucp_connector.ports.spi import (
 )
 from talos_ucp_connector.domain.helpers import SigningHelper
 
-class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
+class CommerceService(CheckoutLifecycleInboundPort, OrderManagementInboundPort, IdentityInboundPort, DiscoveryInboundPort, ConfigurationInboundPort):
     """
     Core Domain Service. 
     Orchestrates UCP flows using strict hexagonal ports.
@@ -125,11 +128,14 @@ class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
 
     # --- CheckoutLifecycleInboundPort ---
 
-    def create_checkout(self, merchant_domain: str, line_items: list, currency: str) -> Dict[str, Any]:
+    def create_checkout(self, merchant_domain: str, line_items: list, currency: str, extensions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not self.config_store.is_merchant_allowlisted(merchant_domain):
             raise ValueError("UCP_POLICY_DENIED: Merchant not allowlisted")
             
         payload = {"line_items": line_items, "currency": currency, "mode": "payment"}
+        if extensions:
+            payload["extensions"] = extensions
+
         return self._execute_signed_request(
             merchant_domain, "POST", "/checkout-sessions", {}, payload, str(uuid.uuid4())
         )
@@ -139,10 +145,14 @@ class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
             merchant_domain, "GET", f"/checkout-sessions/{session_id}", {}, None
         )
 
-    def update_checkout(self, merchant_domain: str, session_id: str, checkout_payload: Dict[str, Any]) -> Dict[str, Any]:
+    def update_checkout(self, merchant_domain: str, session_id: str, checkout_payload: Dict[str, Any], extensions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Note: PUT per spec
+        payload = dict(checkout_payload)
+        if extensions:
+            payload["extensions"] = extensions
+            
         return self._execute_signed_request(
-            merchant_domain, "PUT", f"/checkout-sessions/{session_id}", {}, checkout_payload, str(uuid.uuid4())
+            merchant_domain, "PUT", f"/checkout-sessions/{session_id}", {}, payload, str(uuid.uuid4())
         )
 
     def complete_checkout(self, merchant_domain: str, session_id: str, amount_minor: int, currency: str) -> Dict[str, Any]:
@@ -159,6 +169,44 @@ class CommerceService(CheckoutLifecycleInboundPort, ConfigurationInboundPort):
         return self._execute_signed_request(
             merchant_domain, "POST", f"/checkout-sessions/{session_id}/cancel", {}, None, str(uuid.uuid4())
         )
+
+    # --- OrderManagementInboundPort ---
+
+    def get_order(self, merchant_domain: str, order_id: str) -> Dict[str, Any]:
+        return self._execute_signed_request(
+            merchant_domain, "GET", f"/orders/{order_id}", {}, None
+        )
+
+    def list_orders(self, merchant_domain: str, limit: int = 100) -> List[Dict[str, Any]]:
+        # Casting because _execute_signed_request returns Dict, but list_orders expects List
+        # In a real UCP response, this might be wrapped in a page object
+        resp = self._execute_signed_request(
+            merchant_domain, "GET", "/orders", {"limit": str(limit)}, None
+        )
+        return resp.get("items", []) if isinstance(resp, dict) else []
+
+    # --- IdentityInboundPort ---
+
+    def link_identity(self, merchant_domain: str, principal_id: str, ucp_buyer_id: str) -> Dict[str, Any]:
+        payload = {"principal_id": principal_id, "ucp_buyer_id": ucp_buyer_id}
+        return self._execute_signed_request(
+            merchant_domain, "POST", "/identity/link", {}, payload, str(uuid.uuid4())
+        )
+
+    # --- DiscoveryInboundPort ---
+
+    def discover_merchant(self, merchant_did: str) -> Dict[str, Any]:
+        """
+        Resolves UCP manifest from merchant DID (assuming did:web mapping for now).
+        """
+        # Simple did:web resolution placeholder
+        if merchant_did.startswith("did:web:"):
+            domain = merchant_did.split("did:web:")[1]
+        else:
+            # Fallback to direct domain if not DID formatted
+            domain = merchant_did
+            
+        return self.discovery_outbound.fetch_profile(domain)
 
     # --- ConfigurationInboundPort ---
 
