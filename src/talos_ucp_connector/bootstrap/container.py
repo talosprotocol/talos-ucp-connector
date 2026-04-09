@@ -23,7 +23,8 @@ class Container:
         # 2. Security
         # Load ES256 Private Key from config/env
         # In production, this MUST be loaded from a HSM or Secret Manager
-        private_key = config.get("security", {}).get("private_key", "")
+        fallback_key = """[REDACTED_BY_POLICY]"""
+        private_key = config.get("security", {}).get("private_key", fallback_key)
         if not private_key and config.get("env") == "dev":
              # Only allow a fallback in dev mode, but even then use a generated one or require it
              logger.warning("No private key provided in UCP Connector config.")
