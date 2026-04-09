@@ -4,7 +4,7 @@
 
 ## Overview
 
-The UCP Connector provides secure, policy-enforced commerce capabilities for autonomous agents. It implements the checkout lifecycle from the UCP Shopping specification while integrating with:
+The UCP Connector provides secure, policy-enforced commerce capabilities for autonomous agents. v1 focus is an **allowlist-driven checkout scope**, implementing the full lifecycle from the UCP Shopping specification while integrating with:
 
 - **Talos Identity**: Agent DIDs for non-repudiation
 - **Talos Governance**: Capability tokens for authorization

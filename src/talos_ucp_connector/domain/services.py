@@ -1,4 +1,5 @@
 import uuid
+import jsonschema
 from typing import Dict, Any, Optional, List
 from talos_ucp_connector.ports.spi import (
     CheckoutLifecycleInboundPort, 
@@ -16,6 +17,14 @@ from talos_ucp_connector.ports.spi import (
     PaymentPort
 )
 from talos_ucp_connector.domain.helpers import SigningHelper
+from talos_ucp_connector.domain.errors import (
+    UCPError, 
+    PolicyDeniedError, 
+    TransportError, 
+    TimeoutError, 
+    InvalidInputError,
+    TalosErrorCode
+)
 
 class CommerceService(CheckoutLifecycleInboundPort, OrderManagementInboundPort, IdentityInboundPort, DiscoveryInboundPort, ConfigurationInboundPort):
     """
@@ -46,6 +55,51 @@ class CommerceService(CheckoutLifecycleInboundPort, OrderManagementInboundPort, 
         
         # In-memory discovery cache (Merchant domain -> REST endpoint)
         self._endpoint_cache: Dict[str, str] = {}
+
+        # MCP Tool Arg Schemas (source of truth for enforcement)
+        self._tool_schemas = {
+            "create_checkout": {
+                "type": "object",
+                "required": ["merchant_domain", "line_items", "currency"],
+                "properties": {
+                    "merchant_domain": {"type": "string", "minLength": 1},
+                    "line_items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "required": ["sku", "quantity", "price_minor"],
+                            "properties": {
+                                "sku": {"type": "string"},
+                                "quantity": {"type": "integer", "minimum": 1},
+                                "price_minor": {"type": "integer", "minimum": 0}
+                            }
+                        }
+                    },
+                    "currency": {"type": "string", "minLength": 3, "maxLength": 3}
+                }
+            },
+            "get_checkout": {
+                "type": "object",
+                "required": ["merchant_domain", "session_id"],
+                "properties": {
+                    "merchant_domain": {"type": "string"},
+                    "session_id": {"type": "string"}
+                }
+            }
+        }
+
+    def validate_mcp_args(self, tool_name: str, arguments: Dict[str, Any]) -> None:
+        """Enforce strict schema validation for MCP tool calls."""
+        schema = self._tool_schemas.get(tool_name)
+        if not schema:
+            # D4=B: Unknown tools are rejected before execution
+            raise InvalidInputError(f"Unknown MCP tool: {tool_name}")
+            
+        try:
+            jsonschema.validate(instance=arguments, schema=schema)
+        except jsonschema.ValidationError as e:
+            raise InvalidInputError(f"MCP Argument Validation Failure: {e.message}")
 
     def _get_base_url(self, merchant_domain: str) -> str:
         """Normative discovery of the merchant's UCP endpoint."""
@@ -117,20 +171,27 @@ class CommerceService(CheckoutLifecycleInboundPort, OrderManagementInboundPort, 
             elif method == "GET":
                 resp = self.merchant_checkout.get_checkout(full_url, headers)
             else:
-                raise ValueError(f"Unsupported method: {method}")
+                raise InvalidInputError(f"Unsupported method: {method}")
             
             self.audit.emit_event("UCP_REQUEST_SUCCESS", {"url": full_url})
             return resp
         except Exception as e:
             self.audit.emit_event("UCP_REQUEST_FAILURE", {"url": full_url, "error": str(e)})
-            # TODO: Map to UCP Error Taxonomy
-            raise e
+            # Map common errors to UCP Taxonomy
+            err_msg = str(e)
+            if "timeout" in err_msg.lower():
+                raise TimeoutError(f"UCP Request Timed Out: {err_msg}", details={"url": full_url}) from e
+            if "connection" in err_msg.lower() or "network" in err_msg.lower():
+                raise TransportError(f"UCP Transport Failure: {err_msg}", cause=err_msg, details={"url": full_url}) from e
+            
+            # Catch-all INTERNAL for unknown failures
+            raise UCPError(TalosErrorCode.INTERNAL, f"UCP Connector Internal Error: {err_msg}", cause=err_msg) from e
 
     # --- CheckoutLifecycleInboundPort ---
 
     def create_checkout(self, merchant_domain: str, line_items: list, currency: str, extensions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not self.config_store.is_merchant_allowlisted(merchant_domain):
-            raise ValueError("UCP_POLICY_DENIED: Merchant not allowlisted")
+            raise PolicyDeniedError(f"UCP_POLICY_DENIED: Merchant '{merchant_domain}' not allowlisted")
             
         payload = {"line_items": line_items, "currency": currency, "mode": "payment"}
         if extensions:

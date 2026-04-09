@@ -32,3 +32,8 @@ build-backend = "hatchling.build"
 
 [tool.mypy]
 mypy_path = "stubs"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--import-mode=prepend"

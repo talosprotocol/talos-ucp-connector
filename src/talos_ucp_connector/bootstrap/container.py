@@ -21,10 +21,14 @@ class Container:
         self.config_store = ConfigStoreAdapter(config)
         
         # 2. Security
-        # Placeholder ES256 Private Key for Dev
-        # In production, this would be loaded from a HSM or Secret Manager
-        DEV_KEY = config.get("security", {}).get("private_key", """[REDACTED_BY_POLICY]""")
-        self.signer = RequestSigner(DEV_KEY)
+        # Load ES256 Private Key from config/env
+        # In production, this MUST be loaded from a HSM or Secret Manager
+        private_key = config.get("security", {}).get("private_key", "")
+        if not private_key and config.get("env") == "dev":
+             # Only allow a fallback in dev mode, but even then use a generated one or require it
+             logger.warning("No private key provided in UCP Connector config.")
+             
+        self.signer = RequestSigner(private_key)
         self.signing_kid = config.get("security", {}).get("kid", "talos-dev-key")
 
         # 3. Outbound Adapters

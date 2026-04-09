@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives import serialization
+from talos_contracts import base64url_encode, base64url_decode
 
 # --- CANONICALIZATION ENGINE ---
 
@@ -70,10 +71,10 @@ class RequestSigner:
             "kid": kid,
             "typ": "JOSE"
         }
-        header_b64 = base64.urlsafe_b64encode(json.dumps(jws_header).encode('utf-8')).decode('ascii').rstrip('=')
+        header_b64 = base64url_encode(json.dumps(jws_header).encode('utf-8'))
         
         # 5. Signing Input (Detached: Header . B64(Payload))
-        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode('ascii').rstrip('=')
+        payload_b64 = base64url_encode(payload_bytes)
         signing_input = f"{header_b64}.{payload_b64}".encode('ascii')
 
         # 6. Generate Signature
@@ -82,7 +83,7 @@ class RequestSigner:
         else:
             raise TypeError("Only EC ES256 keys supported for UCP Option A proof")
             
-        sig_b64 = base64.urlsafe_b64encode(signature).decode('ascii').rstrip('=')
+        sig_b64 = base64url_encode(signature)
 
         # 7. Return Detached JWS format: Header..Signature
         return f"{header_b64}..{sig_b64}"
@@ -99,12 +100,12 @@ def verify_ucp_signature(sig_header: str, envelope: Dict[str, Any], public_key_p
         
         # Reconstruct signing input
         payload_bytes = UcpCanonicalizer.canonicalize_jcs(envelope)
-        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode('ascii').rstrip('=')
+        payload_b64 = base64url_encode(payload_bytes)
         signing_input = f"{header_b64}.{payload_b64}".encode('ascii')
         
         # Load Key
         public_key = serialization.load_pem_public_key(public_key_pem.encode('ascii'))
-        signature = base64.urlsafe_b64decode(sig_b64 + '==')
+        signature = base64url_decode(sig_b64)
 
         if isinstance(public_key, ec.EllipticCurvePublicKey):
             public_key.verify(signature, signing_input, ec.ECDSA(hashes.SHA256()))
@@ -133,7 +134,7 @@ if __name__ == "__main__":
 
     signer = RequestSigner(private_pem)
     
-    mock_headers = {
+    simulated_headers = {
         "UCP-Agent": 'profile="talos-gateway-v1", vendor="Talos"',
         "Request-Id": "550e8400-e29b-41d4-a716-446655440000",
         "X-UCP-Iat": "1706176800",
@@ -141,7 +142,7 @@ if __name__ == "__main__":
     }
     
     # Test signing a GET request (Rule A)
-    sig = signer.sign_request("GET", "/checkout-sessions/cs_123", "", mock_headers, None, "talos-dev-key")
+    sig = signer.sign_request("GET", "/checkout-sessions/cs_123", "", simulated_headers, None, "talos-dev-key")
     print(f"Generated Signature: {sig}")
 
     # Reconstruct envelope for verification
@@ -150,8 +151,8 @@ if __name__ == "__main__":
         "path": "/checkout-sessions/cs_123",
         "query": "",
         "headers": {
-            "ucp-agent": UcpCanonicalizer.canonicalize_sfv_dict(mock_headers["UCP-Agent"]),
-            "request-id": mock_headers["Request-Id"]
+            "ucp-agent": UcpCanonicalizer.canonicalize_sfv_dict(simulated_headers["UCP-Agent"]),
+            "request-id": simulated_headers["Request-Id"]
         },
         "body": None,
         "meta": {"iat": "1706176800", "jti": "nonce-999"}

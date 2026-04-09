@@ -74,13 +74,14 @@ def test_create_checkout_flow(service, mock_ports):
         ANY  # Headers
     )
 
+from talos_ucp_connector.domain.errors import PolicyDeniedError
+
 def test_policy_denial(service, mock_ports):
     """Test fail-closed behavior for non-allowlisted merchants."""
     mock_ports["config_store"].is_merchant_allowlisted.return_value = False
-    
-    with pytest.raises(ValueError, match="UCP_POLICY_DENIED"):
-        service.create_checkout("evil.com", [], "USD")
 
+    with pytest.raises(PolicyDeniedError, match="UCP_POLICY_DENIED"):
+        service.create_checkout("evil.com", [], "USD")
 def test_complete_checkout(service, mock_ports):
     """Test completion flow with payment credential acquisition."""
     mock_ports["payment"].get_credentials.return_value = {"token": "opaque_123"}
