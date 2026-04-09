@@ -12,11 +12,17 @@ class RequestSigner(RequestSignerPort):
     Implements UCP-compliant Request signing (Option A).
     Uses ES256 and detached JCS-canonicalized envelope.
     """
-    def __init__(self, private_key_pem: str):
-        self.private_key = serialization.load_pem_private_key(
-            private_key_pem.encode('ascii'), 
-            password=None
-        )
+    def __init__(self, private_key_pem: Optional[str]):
+        self.private_key = None
+        if private_key_pem:
+            try:
+                self.private_key = serialization.load_pem_private_key(
+                    private_key_pem.encode('ascii'), 
+                    password=None
+                )
+            except Exception:
+                # Log or handle appropriately, but don't crash the container during bootstrap
+                pass
 
     def _base64url_encode(self, data: bytes) -> str:
         return base64.urlsafe_b64encode(data).decode('ascii').rstrip('=')
@@ -25,6 +31,8 @@ class RequestSigner(RequestSignerPort):
         """
         Generates a detached JWS signature for the envelope.
         """
+        if not self.private_key:
+            raise RuntimeError("RequestSigner not configured with a valid private key.")
         # 1. Prepare JWS Header
         header = {"alg": "ES256", "kid": kid, "typ": "JOSE"}
         header_bytes = rfc8785.dumps(header)

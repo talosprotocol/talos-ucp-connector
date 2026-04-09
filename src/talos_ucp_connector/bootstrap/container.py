@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Any
 from talos_ucp_connector.adapters.outbound.http import HttpDiscoveryAdapter, HttpMerchantCheckoutAdapter
 from talos_ucp_connector.adapters.outbound.payment import SandboxPaymentAdapter
@@ -5,6 +6,8 @@ from talos_ucp_connector.adapters.infrastructure.security import RequestSigner
 from talos_ucp_connector.adapters.infrastructure.state import SystemClock, InMemoryReplayStore
 from talos_ucp_connector.adapters.infrastructure.persistence import ConfigStoreAdapter, AuditAdapter
 from talos_ucp_connector.domain.services import CommerceService
+
+logger = logging.getLogger(__name__)
 
 class Container:
     """
@@ -23,11 +26,12 @@ class Container:
         # 2. Security
         # Load ES256 Private Key from config/env
         # In production, this MUST be loaded from a HSM or Secret Manager
-        fallback_key = """[REDACTED_BY_POLICY]"""
-        private_key = config.get("security", {}).get("private_key", fallback_key)
-        if not private_key and config.get("env") == "dev":
-             # Only allow a fallback in dev mode, but even then use a generated one or require it
-             logger.warning("No private key provided in UCP Connector config.")
+        private_key = config.get("security", {}).get("private_key")
+        if not private_key:
+             # Do not provide a hardcoded fallback in the source code.
+             # If missing, it must be provided via .env or configuration files.
+             logger.error("No private key provided in UCP Connector config. Signing will fail.")
+             private_key = ""
              
         self.signer = RequestSigner(private_key)
         self.signing_kid = config.get("security", {}).get("kid", "talos-dev-key")

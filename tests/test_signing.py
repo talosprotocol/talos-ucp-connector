@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from talos_ucp_connector.adapters.infrastructure.security import RequestSigner
 
 # Test Vector: ES256 Private Key
-TEST_KEY_PEM = """[REDACTED_BY_POLICY]"""
+# Dynamically generated during tests to avoid hardcoding secrets in source.
 
 # Since we don't have a real valid key in the variable above, let's generate one for testing
 def generate_test_key():
