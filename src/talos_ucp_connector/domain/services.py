@@ -1,5 +1,6 @@
 import uuid
 import jsonschema
+import httpx
 from typing import Dict, Any, Optional, List
 from talos_ucp_connector.ports.spi import (
     CheckoutLifecycleInboundPort, 
@@ -179,6 +180,16 @@ class CommerceService(CheckoutLifecycleInboundPort, OrderManagementInboundPort, 
             self.audit.emit_event("UCP_REQUEST_FAILURE", {"url": full_url, "error": str(e)})
             # Map common errors to UCP Taxonomy
             err_msg = str(e)
+
+            if isinstance(e, httpx.HTTPStatusError):
+                status = e.response.status_code
+                if status == 402:
+                    raise UCPError(TalosErrorCode.INTERNAL, "INSUFFICIENT_FUNDS", details={"url": full_url}) from e
+                if status == 409:
+                    raise UCPError(TalosErrorCode.TALOS_INVALID_INPUT, "IDEMPOTENCY_VIOLATION", details={"url": full_url}) from e
+                if status == 503:
+                    raise UCPError(TalosErrorCode.TALOS_TRANSPORT_ERROR, "MERCHANT_UNAVAILABLE", details={"url": full_url}) from e
+
             if "timeout" in err_msg.lower():
                 raise TimeoutError(f"UCP Request Timed Out: {err_msg}", details={"url": full_url}) from e
             if "connection" in err_msg.lower() or "network" in err_msg.lower():

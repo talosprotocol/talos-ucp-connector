@@ -46,6 +46,9 @@ async def test_live_checkout_flow():
     service.discovery.client = mock_client
     service.merchant_checkout.client = mock_client
     
+    # Mock Signer to avoid private key error
+    service.signer.sign = MagicMock(return_value="mock.detached.signature")
+    
     # Check Discovery Flow
     merchant = "merchant.example.com"
     
