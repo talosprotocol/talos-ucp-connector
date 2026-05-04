@@ -5,7 +5,7 @@ import socket
 import ipaddress
 from urllib.parse import urlparse
 from typing import Dict, Any, List, Optional
-from talos_ucp_connector.ports.spi import DiscoveryPort, MerchantCheckoutPort, RequestSignerPort
+from talos_ucp_connector.ports.spi import DiscoveryPort, MerchantCheckoutPort
 from talos_ucp_connector.domain.errors import TransportError
 
 def _validate_ssrf(url_or_domain: str) -> None:

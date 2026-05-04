@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Set
+from typing import Dict
 from talos_ucp_connector.ports.spi import ClockPort, ReplayStorePort
 
 class SystemClock(ClockPort):

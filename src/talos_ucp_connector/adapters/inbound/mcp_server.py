@@ -139,6 +139,13 @@ async def ucp_discover(merchant_did: str):
         return {"error": str(e), "code": "UCP_DISCOVER_FAILED"}
 
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check_route(request):
+    """Health check for the UCP Connector."""
+    from starlette.responses import JSONResponse
+    return JSONResponse({"status": "ok", "service": "talos-ucp-connector"})
+
+
 def main():
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     if transport == "sse":

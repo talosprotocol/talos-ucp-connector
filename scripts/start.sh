@@ -1,27 +1,41 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # =============================================================================
 # Start Talos UCP Connector
 # =============================================================================
 
-# Default to SSE transport for service mode (HTTP compatible)
-# Note: FastMCP default run() uses stdio. For a service, we usually need SSE or HTTP.
-# If FastMCP doesn't support SSE via CLI args yet, we might need a workaround.
-# Assuming 'talos-ucp --transport sse' or similar if implemented.
-# For now, we will just run the command and assume the environment is set.
-# If stdio only, this might hang start_all.sh if it waits for a port.
-# BUT, start_all.sh waits for port 8082.
-# So we need to ensure it listens on 8082.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SERVICE_NAME="talos-ucp-connector"
+PID_FILE="/tmp/${SERVICE_NAME}.pid"
+LOG_FILE="/tmp/${SERVICE_NAME}.log"
 
-# Export PORT for FastMCP/Uvicorn if applicable
-export PORT="${PORT:-8083}"
+# Default to SSE for background service mode
+export MCP_TRANSPORT="${MCP_TRANSPORT:-sse}"
+export PORT="${PORT:-8084}"
 
-echo "Starting UCP Connector on port $PORT..."
-# If using uv:
-# uv run talos-ucp
-# If using pip install:
-talos-ucp &
+cd "$REPO_DIR"
+
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "$SERVICE_NAME is already running"
+    exit 0
+fi
+
+echo "Starting $SERVICE_NAME on port $PORT (transport: $MCP_TRANSPORT)..."
+
+# Use uvicorn directly if FastMCP.run(transport="sse") is just a wrapper,
+# or use the talos-ucp CLI if it's properly installed.
+# The main.py in ucp-connector has a main() function.
+PYTHONPATH=src nohup python3 src/talos_ucp_connector/adapters/inbound/mcp_server.py > "$LOG_FILE" 2>&1 &
+
 PID=$!
-echo $PID > /tmp/talos-ucp-connector.pid
-wait $PID
+echo $PID > "$PID_FILE"
+sleep 2
+
+if kill -0 "$PID" 2>/dev/null; then
+    echo "✓ $SERVICE_NAME started (Port: $PORT)"
+else
+    echo "✗ $SERVICE_NAME failed to start. Check $LOG_FILE"
+    exit 1
+fi

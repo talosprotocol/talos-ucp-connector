@@ -1,4 +1,3 @@
-import pytest
 from talos_ucp_connector.domain.errors import (
     TalosErrorCode,
     UCPError,

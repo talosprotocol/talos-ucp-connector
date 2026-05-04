@@ -1,11 +1,9 @@
 import json
-import base64
-from typing import Dict, Any, Optional, cast
+from typing import Dict, Any, Optional
 import rfc8785
 import http_sfv
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, padding
-from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 from talos_contracts import base64url_encode, base64url_decode
 

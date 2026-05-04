@@ -1,7 +1,6 @@
 import time
 import subprocess
 import httpx
-import json
 
 def run_test():
     print("--- 🚀 Starting UCP End-to-End Verification ---")

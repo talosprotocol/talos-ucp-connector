@@ -3,10 +3,8 @@ Live integration test for UCP Connector.
 Spin up the MCP server and run a full checkout flow against a mock merchant.
 """
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch
-from mcp.server.fastmcp import FastMCP
-from talos_ucp_connector.adapters.inbound.mcp_server import mcp, service
+from unittest.mock import MagicMock
+from talos_ucp_connector.adapters.inbound.mcp_server import service
 
 # Mock merchant response
 MOCK_MERCHANT_PROFILE = {

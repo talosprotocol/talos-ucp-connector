@@ -1,4 +1,4 @@
-from typing import Callable, Any, Optional, List
+from typing import Callable, Any, Optional
 
 class FastMCP:
     def __init__(self, name: str, **kwargs: Any) -> None: ...

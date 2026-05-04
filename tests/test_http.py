@@ -1,7 +1,6 @@
 """
 Tests for Outbound HTTP Adapters.
 """
-import pytest
 from unittest.mock import MagicMock
 import httpx
 from talos_ucp_connector.adapters.outbound.http import HttpDiscoveryAdapter, HttpMerchantCheckoutAdapter

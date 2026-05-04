@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, HttpUrl
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
+from typing import Dict, Any
 
 class LineItem(BaseModel):
     name: str
