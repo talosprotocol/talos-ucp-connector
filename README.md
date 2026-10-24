@@ -147,6 +147,15 @@ pip install -e .
 talos-ucp
 ```
 
+## Installation
+
+### Via Homebrew (macOS & Linux)
+
+```bash
+brew tap talosprotocol/tap
+brew install talos-ucp
+```
+
 ## Development
 
 To run the tests, ensure you have a standard Python environment with `pip` available.
